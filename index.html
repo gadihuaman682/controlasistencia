@@ -138,7 +138,7 @@ var EPPM={};
 function eppEstTxt(a){if(!VEREPP)return "";return !a.epp_foto?(((a.tipo_lugar||"estacion")==="estacion")?"Sin foto":"—"):a.epp_estado==="aprobada"?"Aprobada":a.epp_estado==="rechazada"?"Rechazada":"Por revisar"}
 function eppCelda(a){if(a.id)EPPM[a.id]=a;if(!a.epp_foto)return (a.tipo_lugar||"estacion")==="estacion"?'<span class="chip c4">Sin foto</span>':"—";
 var c=a.epp_estado==="aprobada"?"c1":a.epp_estado==="rechazada"?"c3":"c2";return '<button class="eb" data-epp="'+esc(a.id)+'">🦺 Ver</button> <span class="chip '+c+'">'+eppEstTxt(a)+'</span>'+iaChip(a)}
-function iaChip(a){var i=a.epp_ia;if(!i)return"";var N={helmet:"casco",gloves:"guantes",boots:"botas",vest:"chaleco",harness:"arnés",goggles:"lentes"};return i.ok?' <span class="chip c1">IA ✓</span>':' <span class="chip c3">IA: falta '+esc((i.falta||[]).map(function(x){return N[x]||x}).join(", "))+'</span>'}
+function iaChip(a){var i=a.epp_ia;if(!i)return"";if(i.multi)return ' <span class="chip c3">IA: '+i.multi+' personas en la foto</span>';var N={helmet:"casco",gloves:"guantes",boots:"botas",vest:"chaleco",harness:"arnés",goggles:"lentes"};return i.ok?' <span class="chip c1">IA ✓</span>':' <span class="chip c3">IA: falta '+esc((i.falta||[]).map(function(x){return N[x]||x}).join(", "))+'</span>'}
 function kpiEpp(D){var n=0;D.ab.concat(D.ce).forEach(function(s){if(s.a.epp_foto&&!s.a.epp_estado)n++});return '<div class="kpi"><b>'+n+'</b><span>Fotos EPP por revisar</span></div>'}
 function eppCerrar(){var m=$("eppM");if(m)m.remove()}
 function eppAbrir(id){var a=EPPM[id];if(!a)return;eppCerrar();var P={};PERF.forEach(function(p){P[p.id]=p});var i=new Date(a.ingreso).getTime();
@@ -167,15 +167,16 @@ var h=tabs()+'<div class="card" style="max-width:640px"><h2>Configuración de la
 +'<label>Qué hace la IA</label><select id="cm"><option value="off">Desactivada (no analiza la foto)</option><option value="aviso">Solo avisa (deja marcar el ingreso)</option><option value="bloqueo">Bloquea el ingreso si falta algún EPP</option></select>'
 +'<label style="margin-top:14px">EPP obligatorios</label><div id="cr">'+Object.keys(EPPN).map(function(k){return '<label class="ck"><input type="checkbox" value="'+k+'"'+((c.requeridos||[]).indexOf(k)>-1?" checked":"")+'> '+EPPN[k]+'</label>'}).join("")+'</div>'
 +'<label style="margin-top:14px">Exigencia de la IA (umbral): <b id="cuv">'+c.umbral+'</b></label><input id="cu" type="range" min="0.2" max="0.8" step="0.05" value="'+c.umbral+'"><p class="s">Más alto = más estricta (rechaza más fotos). Más bajo = más permisiva.</p>'
++'<label class="ck" style="margin-top:10px"><input type="checkbox" id="cp"'+(c.una_persona!==false?" checked":"")+'> Exigir una sola persona en la foto (si salen 2 o más, no se aprueba)</label>'
 +'<label style="margin-top:6px">Dónde se pide la foto</label><div id="ct">'+Object.keys(TPN).map(function(k){return '<label class="ck"><input type="checkbox" value="'+k+'"'+((c.tipos||[]).indexOf(k)>-1?" checked":"")+'> '+TPN[k]+'</label>'}).join("")+'</div>'
 +'<label class="ck" style="margin-top:14px"><input type="checkbox" id="cg"'+(c.galeria?" checked":"")+'> Permitir fotos de la galería (solo para pruebas; desactívalo en producción)</label>'
 +'<div style="margin-top:16px"><button class="btn" id="cs">Guardar</button> <span id="cer" class="s"></span></div>'+(c.actualizado?'<p class="s">Última actualización: '+fFecha(new Date(c.actualizado).getTime())+" "+fHora(new Date(c.actualizado).getTime())+'</p>':'')+'</div>';
 $("v").innerHTML=h;ligarTabs();$("cm").value=c.modo;$("cu").oninput=function(){$("cuv").textContent=this.value};
 $("cs").onclick=function(){var q=function(s){return [].map.call(document.querySelectorAll(s+" input:checked"),function(x){return x.value})},req=q("#cr"),tp=q("#ct"),md=$("cm").value;
 if(md!=="off"&&!req.length){$("cer").textContent="Marca al menos un EPP obligatorio.";return}
-$("cer").textContent="Guardando…";api("/rest/v1/config_epp?id=eq.1",{m:"PATCH",b:{modo:md,requeridos:req,umbral:parseFloat($("cu").value),galeria:$("cg").checked,tipos:tp,actualizado:new Date().toISOString()},h:{Prefer:"return=representation"}}).then(function(r){
+$("cer").textContent="Guardando…";api("/rest/v1/config_epp?id=eq.1",{m:"PATCH",b:{modo:md,requeridos:req,umbral:parseFloat($("cu").value),galeria:$("cg").checked,una_persona:$("cp").checked,tipos:tp,actualizado:new Date().toISOString()},h:{Prefer:"return=representation"}}).then(function(r){
 if(r.st===401){salir("Tu sesión venció. Ingresa de nuevo.");return}
-if(!r.ok||!Array.isArray(r.d)||!r.d.length){$("cer").textContent="No se pudo guardar"+(r.ok?" (sin permiso: falta ejecutar epp_config.sql)":" (error "+r.st+")")+".";return}
+if(!r.ok||!Array.isArray(r.d)||!r.d.length){$("cer").textContent="No se pudo guardar"+(r.ok?" (sin permiso: falta ejecutar epp_config.sql)":" (error "+r.st+(r.st===400?": ¿ya ejecutaste epp_una_persona.sql?":"")+")")+".";return}
 CFGE=r.d[0];$("cer").textContent="✓ Guardado. Los teléfonos lo reciben al abrir Clock in."}).catch(function(){$("cer").textContent="Sin conexión con Supabase."})}}
 
 /* ---- Resumen del día ---- */
@@ -276,3 +277,4 @@ if(!CFG)vistaConfig();else vistaLogin();
 </script>
 </body>
 </html>
+
